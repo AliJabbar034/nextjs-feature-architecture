@@ -888,22 +888,35 @@ On commit, staged files are:
 
 When an agent or contributor **finishes implementing** a feature, command, server action, utility, or other non-trivial change:
 
-1. **Ask the user** whether they want test cases added for that work.
+1. **Check** whether **unit tests already exist** for that scope (e.g. `get-users.test.ts` / `get-users.spec.ts` for the same action, schema, or utility).
+
+### If unit tests already exist for that scope
+
+* **Update or extend** the existing test file(s) to cover the new or changed behavior.
+* Do **not** ask first — keeping tests in sync with code is expected when tests are already part of the project.
+* Do **not** create duplicate test files for the same unit — edit the existing spec.
+
+### If no unit tests exist for that scope
+
+1. **Ask the user** whether they want unit tests written for that work.
 2. **Do not** add tests automatically unless the user says yes.
-3. **Do not** skip the question — always ask at the end of the implementation.
+3. **Do not** skip the question.
 
 If the user **declines**, stop — no tests required for that task.
 
 If the user **accepts**:
 
 * Add tests only for the **completed scope** (the feature/command just implemented).
-* Check whether tests **already exist** — extend or update them instead of duplicating.
 * Follow the priority order below for **what** to test.
 * If no test runner is configured yet, **ask before installing** Vitest/Jest/Playwright (see **Dependency Rules**), then add tests using the project’s chosen stack.
 
-Example prompt to user:
+Example prompt when **no tests exist yet**:
 
-> Implementation is complete. Do you want me to add test cases for this feature?
+> Implementation is complete. There are no unit tests for this yet. Do you want me to add them?
+
+Example when **tests already exist** (no ask — proceed):
+
+> Updating `get-users.test.ts` to cover the new pagination behavior.
 
 ## What to test (priority)
 
@@ -923,7 +936,8 @@ Example prompt to user:
 
 * Write trivial tests that only assert the obvious.
 * Add tests for unchanged, unrelated code.
-* Block delivery of the feature on tests unless the user asked for them upfront.
+* Ask to add tests when a spec file already exists for that unit — **update it instead**.
+* Block delivery of the feature on tests unless the user asked for them upfront (when none exist yet).
 
 ---
 
@@ -1078,7 +1092,7 @@ AI agents must:
 * Prefer consistency over optimization.
 * Reuse existing utilities.
 * Avoid introducing alternative patterns.
-* **After completing a feature or command**, ask the user if they want test cases added; if yes and none exist, add tests for that scope (see **Testing Rules**).
+* **After completing a feature or command**, follow **Testing Rules**: **update existing unit tests** when a spec already exists for that scope; **ask the user** only when no unit tests exist yet.
 
 AI agents must never:
 
@@ -1090,7 +1104,8 @@ AI agents must never:
 * Introduce competing architectures.
 * Rename or reformat external/library components to match project file naming.
 * Introduce a **new** file, folder, or data-type casing style that conflicts with the established project convention (or the user’s chosen convention).
-* Add tests without the user agreeing, or skip asking whether tests are wanted after finishing implementation.
+* Skip asking when **no unit tests exist** for the completed scope (unless the user already requested tests upfront).
+* Create a duplicate test file when a spec already exists for the same unit — update the existing file.
 * Run a different package manager than the one the repo uses (e.g. npm in a pnpm project).
 
 When uncertain:
