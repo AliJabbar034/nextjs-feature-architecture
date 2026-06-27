@@ -1,0 +1,1074 @@
+# Next.js Feature Architecture — Gemini Instructions
+
+# AGENTS.md
+
+## Project Stack
+
+### Core
+
+* Framework: Next.js 16+ App Router
+* Language: TypeScript (strict mode)
+* Authentication: Auth.js v5
+* State Management: Zustand
+* Validation: Zod
+* Forms: React Hook Form + `@hookform/resolvers`
+* Styling: Tailwind CSS 4
+* Data Fetching: Server Components + Server Actions
+* API Communication: Feature-based Server Actions (Route Handlers when required — see API Communication Rules)
+* Real-time Communication: WebSocket or SSE
+* Package Manager: follow **Package manager** rules below (this repo uses **pnpm**)
+
+### UI & components
+
+* Component primitives: **shadcn/ui** + **Radix UI** (`src/components/ui/`) — keep CLI/library file names and exports as-is
+* Icons: **@tabler/icons-react** (primary); Lucide only if already used in the same area
+* Class utilities: `clsx`, `tailwind-merge`, `class-variance-authority`
+* Charts / motion: Recharts, Framer Motion (dashboard/marketing only — do not add alternatives)
+
+### Code quality (required in every clone)
+
+* **ESLint** — `eslint.config.mjs` + `eslint-config-next` (core-web-vitals, TypeScript)
+* **Prettier** — `prettier.config.mjs` + `prettier-plugin-tailwindcss`
+* **eslint-config-prettier** — no conflicting format rules between ESLint and Prettier
+* **Husky** — git hooks via `prepare` script
+* **lint-staged** — ESLint + Prettier on staged files in pre-commit
+
+If any of the above is missing, set it up before feature work (see **Code Quality Rules**).
+
+### Documentation (required)
+
+* **README.md** — developer onboarding: install, scripts, env vars, structure
+* **`.cursor/rules/project-rules.mdc`** — architecture and agent rules (canonical copy — update all agent folders from `rules/core-rules.md`)
+
+### Environment & config
+
+* Env validation: `src/config/env.ts` (single source for `process.env`)
+* Path alias: `@/` → `src/`
+* Brand/constants: `src/config/brand.ts`
+
+### Not in stack — ask before adding
+
+Do **not** install or introduce these without explicit approval:
+
+**State & data**
+
+* Alternative state libraries — Redux, Jotai, MobX, Recoil, …
+* Client-side server-state fetchers — TanStack Query / SWR for protected or SSR data
+* `axios` or custom `fetch` wrappers inside components or features (use `lib/api-client.ts`)
+
+**UI**
+
+* Alternative component kits — MUI, Chakra, Ant Design, … (competing with shadcn/Radix)
+* Duplicate icon libraries in new code — prefer `@tabler/icons-react`
+
+**Tooling**
+
+* Extra formatters, linters, or commit hooks beyond **ESLint + Prettier + Husky + lint-staged**
+* Competing test runners or CI lint/format tools without team agreement
+
+**Backend & API shape**
+
+* A new backend integration pattern (GraphQL client, tRPC, gRPC in the browser, …)
+* Business logic duplicated in Route Handlers instead of feature actions/services
+* Calling an external API from the client when Server Actions or Route Handlers should proxy it
+
+### Backend architecture — ask before API design
+
+Before building data features, **confirm where the API lives**. Design flows accordingly:
+
+| Target | Use when | Frontend pattern |
+| --- | --- | --- |
+| **External backend** (default) | Separate API service (Node, Go, etc.) owns business logic and DB | Server Actions → `lib/api-client.ts` → `API_URL`; Route Handlers only for webhooks, OAuth, streaming, or libraries that require `/api/*` |
+| **Next.js backend (BFF)** | This repo owns HTTP APIs; no separate service (or Next is the gateway) | Thin Route Handlers in `src/app/api/` + feature actions/services; optional `proxy.ts` for forwarding |
+| **Hybrid** | Next handles auth, webhooks, uploads, SSE; external service handles core CRUD | Split clearly: Next-owned routes in `app/api/`; everything else via `api-client` to external service |
+
+**Agents and contributors must ask** if the task involves new endpoints and it is unclear which target applies. Do not:
+
+* Add `app/api/*` CRUD that mirrors an external backend without reason
+* Assume `API_URL` exists when building a Next-only backend
+* Mix patterns in the same feature (e.g. some calls to external API, some to local Route Handlers) without documenting why
+
+Document the chosen mode in the feature or PR when introducing new API surface area.
+
+---
+
+# Architecture Principles
+
+* Prefer consistency over cleverness.
+* Prefer existing patterns over introducing new ones.
+* Use **kebab-case** for **project files you create** (features, routes, custom components).
+* Prefer Server Components over Client Components.
+* Prefer Server Actions over API routes when possible.
+* Prefer built-in Next.js features over third-party packages.
+* Keep components small and composable.
+* Keep business logic isolated inside features.
+
+---
+
+# Folder Structure
+
+```text
+src/
+│
+├── app/
+├── components/          # Shared UI only (ui/, forms/, logo, platform-icon)
+│   └── marketing/       # Marketing landing-page sections (not app features)
+├── features/            # Isolated domains — actions, components, schemas
+├── lib/
+├── hooks/
+├── store/
+├── types/
+├── utils/
+├── constants/
+├── providers/
+├── styles/
+├── config/
+├── proxy.ts
+└── middleware.ts
+```
+
+---
+
+# Feature Structure
+
+Every feature must be isolated.
+
+```text
+features/
+└── users/
+    ├── actions/
+    │   ├── index.ts
+    │   ├── get-users.ts
+    │   ├── get-user.ts
+    │   ├── create-user.ts
+    │   ├── update-user.ts
+    │   └── delete-user.ts
+    │
+    ├── components/
+    │   └── index.ts       # Re-export public components
+    ├── hooks/
+    ├── schemas/
+    ├── services/
+    ├── types.ts
+    ├── constants.ts
+    ├── utils.ts
+    └── index.ts           # Re-export actions, components, schemas
+```
+
+Each feature's `components/index.ts` exports UI owned by that feature. The feature root `index.ts` re-exports the public API.
+
+`actions/index.ts` must export all CRUD actions.
+
+Example:
+
+```ts
+export * from "./get-users";
+export * from "./get-user";
+export * from "./create-user";
+export * from "./update-user";
+export * from "./delete-user";
+```
+
+---
+
+# Authentication Rules
+
+Always use Auth.js v5.
+
+Use:
+
+* JWT Strategy
+* Access Token
+* Refresh Token
+* Automatic Refresh Token Rotation
+
+Requirements:
+
+* Store tokens in HttpOnly cookies.
+* Never store tokens in localStorage.
+* Never expose refresh tokens to client components.
+* Refresh access tokens automatically.
+* Redirect to login on refresh failure.
+
+Authentication Flow:
+
+```text
+Login
+ ↓
+Access Token Issued
+ ↓
+Access Token Expires
+ ↓
+Refresh Token Exchange
+ ↓
+New Access Token
+```
+
+---
+
+# API Communication Rules
+
+## Backend target — confirm first
+
+See **Backend architecture — ask before API design** in Project Stack.
+
+* **External backend** → actions call `lib/api-client.ts`; env: `API_URL` in `config/env.ts`
+* **Next.js backend** → implement `src/app/api/<resource>/route.ts`; keep handlers thin; shared logic in feature actions/services
+* **Hybrid** → state which routes are Next-owned vs proxied to external
+
+If the user has not specified, **ask** before creating Route Handlers or wiring `api-client`.
+
+---
+
+## Default: feature Server Actions
+
+All **internal** API communication must happen inside feature actions.
+
+```text
+features/
+└── users/
+    └── actions/
+        ├── get-users.ts
+        ├── create-user.ts
+        └── index.ts
+```
+
+Every action file must contain:
+
+```ts
+"use server";
+```
+
+Example:
+
+```ts
+"use server";
+
+export async function getUsers() {
+  return api.get("/users");
+}
+```
+
+Call actions from Server Components or client components via form/action props — never fetch the backend directly from the browser.
+
+---
+
+## When to use Next.js Route Handlers (`app/api/`)
+
+Use a **Route Handler** when Server Actions are not enough **or** when this project is the **Next.js backend (BFF)** for that resource.
+
+Common cases:
+
+* **Next.js owns the API** — CRUD and business endpoints live in `app/api/` (BFF mode)
+* **External library or component** that requires a fixed HTTP endpoint (e.g. `POST /api/upload`, webhook URL, OAuth redirect/callback)
+* **Webhooks** from third parties (Stripe, ad platforms, email providers)
+* **Streaming** (SSE) or long-lived responses
+* **Public or machine-to-machine** endpoints that must not go through Server Actions
+* **Framework conventions** (e.g. Auth.js `/api/auth/[...nextauth]`)
+
+In **external backend** mode, do **not** add Route Handlers for normal CRUD that the external API already provides — use Server Actions + `api-client` instead.
+
+### Route Handler structure
+
+```text
+src/app/api/
+└── users/
+    └── route.ts          # GET, POST, …
+```
+
+Example (thin handler — logic stays in the feature):
+
+```ts
+import { NextResponse } from "next/server";
+
+import { createUser } from "@/features/users/actions/create-user";
+import { createUserSchema } from "@/features/users/schemas/user.schema";
+
+export async function POST(request: Request) {
+  const body = createUserSchema.safeParse(await request.json());
+
+  if (!body.success) {
+    return NextResponse.json(
+      { success: false, message: "Invalid request", errors: body.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const result = await createUser(body.data);
+
+  if (!result.success) {
+    return NextResponse.json(result, { status: 422 });
+  }
+
+  return NextResponse.json(result);
+}
+```
+
+### Route Handler rules
+
+* Keep handlers **thin** — validate, auth-check, then delegate to **feature actions** or **feature services**
+* Never duplicate business logic in `route.ts`; share the same action/service Server Actions use
+* Always validate request body, query, and headers with **Zod**
+* Use the **centralized API client** (`lib/api-client.ts`, etc.) inside actions/services — not raw `fetch` to the backend scattered in routes
+* Never expose secrets, refresh tokens, or internal API keys in responses
+* Return the standard API shape: `{ success, data }` / `{ success, message, errors }`
+* Apply auth the same way as Server Actions (session, HttpOnly cookies)
+
+---
+
+## External components that need an API
+
+When a **third-party or external component** expects an HTTP API:
+
+1. **Prefer** adapting it to a Server Action if the library supports callbacks, server props, or server-side integration
+2. If it **requires** a URL (e.g. `endpoint="/api/..."`), add a Route Handler under `src/app/api/`
+3. The Route Handler calls the same **feature action** — do not implement backend logic only in the route
+4. Do not call external backend URLs from the client; the Route Handler (or Server Action) talks to the backend
+
+```text
+External component (client)
+  → POST /api/...        (only when required)
+    → feature action
+      → lib/api-client
+        → backend API
+```
+
+Preferred when the library allows it:
+
+```text
+External component (client)
+  → server action prop / form action
+    → lib/api-client
+      → backend API
+```
+
+---
+
+# Forbidden Patterns
+
+Never:
+
+* Call APIs inside useEffect.
+* Call APIs directly from client components.
+* Fetch protected data from browsers.
+* Store tokens in localStorage.
+* Create axios instances in components.
+* Add unnecessary `use client`.
+
+Forbidden:
+
+```tsx
+useEffect(() => {
+  fetch("/api/users");
+}, []);
+```
+
+Exception: an **external component** may call a **Next.js Route Handler** you own (`/api/...`) when the library requires a URL. That route must stay thin and delegate to feature actions — never call the backend directly from the client.
+
+Preferred:
+
+```tsx
+const users = await getUsers();
+```
+
+---
+
+# Data Fetching Priority
+
+Preferred order:
+
+1. Server Component
+2. Server Action
+3. Route Handler
+4. Client Component
+
+Avoid:
+
+```text
+Client Component
+→ useEffect
+→ fetch()
+→ setState()
+```
+
+Preferred:
+
+```text
+Server Component
+→ Server Action
+→ Backend API
+→ Render
+```
+
+---
+
+# API Client Rules
+
+Use a centralized API client.
+
+Allowed:
+
+```text
+lib/api-client.ts
+lib/auth-client.ts
+lib/public-client.ts
+```
+
+Never:
+
+* Create fetch wrappers inside features.
+* Create multiple axios instances.
+* Duplicate interceptors.
+
+---
+
+# Validation Rules
+
+All incoming data must be validated using Zod.
+
+Required:
+
+* Request validation
+* Form validation
+* Environment validation
+
+---
+
+# Environment Rules
+
+Environment variables must be validated in:
+
+```text
+config/env.ts
+```
+
+Never:
+
+```ts
+process.env.API_URL
+```
+
+outside:
+
+```text
+config/env.ts
+```
+
+---
+
+# Form Rules
+
+Always use:
+
+* React Hook Form
+* Zod Resolver
+
+Shared form components must exist in:
+
+```text
+components/forms/
+```
+
+Examples:
+
+```text
+form-input.tsx
+form-select.tsx
+form-textarea.tsx
+form-checkbox.tsx
+form-date-picker.tsx
+```
+
+Export PascalCase component names from kebab-case files (e.g. `FormInput` from `form-input.tsx`).
+
+Do not rename or reformat **library-installed** form primitives (e.g. shadcn `Form` from `@/components/ui/form`) — use their exports as documented.
+
+---
+
+# Search Params Rules
+
+Use search params for:
+
+* Pagination
+* Search
+* Sorting
+* Filtering
+* Tabs
+* Modal state
+
+Examples:
+
+```text
+?page=1
+?limit=20
+?search=ali
+?sort=name
+?order=asc
+?status=active
+```
+
+Read values using:
+
+```ts
+searchParams
+```
+
+Never store URL state in component state unnecessarily.
+
+---
+
+# Pagination Rules
+
+Pagination must be server-side.
+
+Always pass:
+
+```text
+page
+limit
+search
+sort
+order
+filters
+```
+
+through search params.
+
+Example:
+
+```text
+/users?page=1&limit=20&search=ali
+```
+
+---
+
+# Mutation Rules
+
+After create, update or delete:
+
+Always use:
+
+```ts
+revalidateTag()
+revalidatePath()
+```
+
+Example:
+
+```ts
+await createUser(data);
+
+revalidateTag("users");
+revalidatePath("/dashboard/users");
+```
+
+---
+
+# Caching Rules
+
+Allowed:
+
+* cache()
+* revalidateTag()
+* revalidatePath()
+* Route Segment Caching
+
+Avoid:
+
+```tsx
+useEffect(() => {
+  fetch(...)
+})
+```
+
+---
+
+# Loading Rules
+
+Every route should include:
+
+```text
+loading.tsx
+```
+
+Requirements:
+
+* Skeleton loaders only.
+* Match final layout dimensions.
+* Avoid spinner-only loaders.
+
+---
+
+# Error Handling Rules
+
+Every route should contain:
+
+```text
+error.tsx
+```
+
+Requirements:
+
+* Friendly message
+* Retry button
+* Logging support
+
+---
+
+# Component Rules
+
+## Shared vs feature components
+
+`src/components/` is for **app-wide reusable UI only** — not feature-specific screens.
+
+```text
+src/components/
+├── ui/                      # shadcn/Radix primitives + project UI (keep CLI/library names as-is)
+├── forms/                   # Shared form fields you create (form-input.tsx, form-select.tsx, …)
+├── logo.tsx                 # Brand logo — used across marketing, auth, dashboard
+└── platform-icon.tsx        # Platform icons — used across marketing, dashboard, onboarding
+```
+
+Feature-specific components live inside their feature:
+
+```text
+src/features/
+├── auth/components/         # login-form.tsx, register-form.tsx, connect-form.tsx, auth-shell.tsx, …
+├── contact/components/      # contact-form.tsx
+├── dashboard/components/    # dashboard-nav.tsx, onboarding-banner.tsx
+├── onboarding/components/   # onboarding-wizard.tsx
+└── platforms/components/    # platforms-manager.tsx, platform-connect-grid.tsx
+```
+
+Marketing page sections stay in `src/components/marketing/` (landing-page only).
+
+### Import rules
+
+* App routes import from `@/features/<feature>/components/...` or `@/features/<feature>`.
+* Shared primitives import from `@/components/ui/...` or `@/components/<name>`.
+* Features must not import from other features' `components/` unless explicitly shared — prefer lifting to `src/components/` when truly cross-cutting.
+* Business logic stays in `features/<name>/actions/`, never in shared components.
+
+---
+
+# Component Implementation Rules
+
+Prefer:
+
+* Server Components
+* Streaming
+* Suspense
+* Route Groups
+* Parallel Routes
+* Intercepting Routes
+
+Use Client Components only for:
+
+* useState
+* useEffect
+* Browser APIs
+* Third-party libraries
+
+Keep:
+
+```tsx
+"use client";
+```
+
+as low in the tree as possible.
+
+---
+
+# Proxy Rules
+
+For Next.js 15+ use:
+
+```text
+proxy.ts
+```
+
+Use for:
+
+* API forwarding
+* Header forwarding
+* Auth forwarding
+* Microservices
+
+Avoid middleware for proxying.
+
+---
+
+# Table Rules
+
+Every table should support:
+
+* Pagination
+* Search
+* Sorting
+* Filtering
+* Empty states
+* Loading states
+* Column visibility
+
+Prefer server-side implementations.
+
+---
+
+# File Upload Rules
+
+Prefer:
+
+* Presigned URLs
+* Multipart Uploads
+
+Avoid:
+
+* Uploading large files through application servers.
+
+---
+
+# Logging Rules
+
+Never use:
+
+```ts
+console.log()
+```
+
+Use:
+
+```ts
+logger.info()
+logger.warn()
+logger.error()
+```
+
+Disable logs in production.
+
+---
+
+# API Response Format
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+Error:
+
+```json
+{
+  "success": false,
+  "message": "",
+  "errors": []
+}
+```
+
+---
+
+# WebSocket Rules
+
+Use WebSockets for:
+
+* Chat
+* Notifications
+* Presence
+* Collaborative Editing
+* Live Dashboards
+
+Architecture:
+
+```text
+Browser
+ ↓
+WebSocket Gateway
+ ↓
+Redis Pub/Sub
+ ↓
+Application Services
+```
+
+Recommended:
+
+* Socket.IO
+* Native WebSocket API
+
+---
+
+# SSE Rules
+
+Prefer SSE when communication is one-way.
+
+Use SSE for:
+
+* AI Streaming
+* Progress Updates
+* Export Jobs
+* Build Logs
+* Notifications
+* Background Jobs
+
+Decision Table:
+
+| Requirement           | Technology |
+| --------------------- | ---------- |
+| Client → Server       | WebSocket  |
+| Server → Client       | SSE        |
+| Chat                  | WebSocket  |
+| AI Streaming          | SSE        |
+| Job Progress          | SSE        |
+| Collaborative Editing | WebSocket  |
+
+---
+
+# Security Rules
+
+* Never expose secrets to client components.
+* Never commit `.env`.
+* Use HttpOnly cookies.
+* Validate all input.
+* Sanitize all output.
+* Use CSRF protection when required.
+
+---
+
+# Code Quality Rules
+
+This project uses **ESLint**, **Prettier**, and **Husky** for consistent formatting and linting.
+
+## Required tooling
+
+```text
+eslint.config.mjs       # ESLint (Next.js core-web-vitals + TypeScript)
+prettier.config.mjs     # Prettier + Tailwind class sorting
+.husky/pre-commit       # Runs lint-staged on commit
+package.json            # lint-staged config
+```
+
+If any of these are missing in a clone or new branch, install and wire them up before committing feature work.
+
+## Scripts
+
+```bash
+pnpm lint              # ESLint check
+pnpm lint:fix          # ESLint auto-fix
+pnpm format            # Prettier write
+pnpm format:check      # Prettier check (CI-friendly)
+```
+
+## Git hooks (Husky)
+
+* **`prepare`** runs `husky` after `pnpm install` to enable hooks
+* **`pre-commit`** runs `lint-staged` on staged files only
+* Do not skip hooks (`--no-verify`) unless explicitly requested
+
+## lint-staged
+
+On commit, staged files are:
+
+1. **ESLint `--fix`** — `*.{js,jsx,ts,tsx,mjs,cjs}`
+2. **Prettier `--write`** — JS/TS plus `json`, `md`, `css`, `mdc`, `yml`
+
+## Agent / contributor rules
+
+* Run `pnpm lint` and `pnpm format:check` before opening a PR when touching many files
+* Fix lint and format issues in changed files — do not disable rules to bypass them
+* ESLint and Prettier must not conflict — `eslint-config-prettier` disables overlapping ESLint formatting rules
+* Do not add competing formatters or duplicate pre-commit tools
+
+---
+
+# Testing Rules
+
+## After completing a feature or command
+
+When an agent or contributor **finishes implementing** a feature, command, server action, utility, or other non-trivial change:
+
+1. **Ask the user** whether they want test cases added for that work.
+2. **Do not** add tests automatically unless the user says yes.
+3. **Do not** skip the question — always ask at the end of the implementation.
+
+If the user **declines**, stop — no tests required for that task.
+
+If the user **accepts**:
+
+* Add tests only for the **completed scope** (the feature/command just implemented).
+* Check whether tests **already exist** — extend or update them instead of duplicating.
+* Follow the priority order below for **what** to test.
+* If no test runner is configured yet, **ask before installing** Vitest/Jest/Playwright (see **Dependency Rules**), then add tests using the project’s chosen stack.
+
+Example prompt to user:
+
+> Implementation is complete. Do you want me to add test cases for this feature?
+
+## What to test (priority)
+
+1. Server Actions
+2. Authentication
+3. Validation (Zod schemas, form resolvers)
+4. Utilities
+5. Critical business logic
+
+## Test file conventions
+
+* Place tests next to source or in a mirrored path — match existing project pattern once a runner exists.
+* Use **kebab-case** for new test files you create (e.g. `get-users.test.ts`, `user.schema.test.ts`).
+* Prefer unit tests for actions, schemas, and utils; integration/E2E only when the user requests or the feature requires it.
+
+## Do not
+
+* Write trivial tests that only assert the obvious.
+* Add tests for unchanged, unrelated code.
+* Block delivery of the feature on tests unless the user asked for them upfront.
+
+---
+
+# Dependency Rules
+
+Before installing a package:
+
+* Check existing dependencies first — reuse what the project already has.
+* Prefer native Next.js solutions.
+* **Ask before adding new dependencies** (see **Not in stack — ask before adding**).
+* Avoid duplicate libraries.
+
+## Package manager
+
+**If the project is already initialized** — use the **same package manager** as the repo. Do not mix managers or add a second lockfile.
+
+Detect from (in order):
+
+1. `"packageManager"` field in `package.json` (e.g. `"pnpm@10.x"`)
+2. Lockfile present:
+   * `pnpm-lock.yaml` → **pnpm**
+   * `package-lock.json` → **npm**
+   * `yarn.lock` → **yarn**
+   * `bun.lockb` → **bun**
+
+Use matching commands only:
+
+| Manager | Install | Add package | Run script |
+| --- | --- | --- | --- |
+| pnpm | `pnpm install` | `pnpm add …` | `pnpm dev` |
+| npm | `npm install` | `npm install …` | `npm run dev` |
+| yarn | `yarn` | `yarn add …` | `yarn dev` |
+| bun | `bun install` | `bun add …` | `bun run dev` |
+
+**If the project is not initialized** (greenfield — no lockfile, no `node_modules`, new scaffold):
+
+* **Ask the user** which package manager they want (pnpm, npm, yarn, or bun).
+* Do not assume pnpm/npm/yarn until they choose.
+* After choice, use only that manager and commit the matching lockfile.
+
+**Your target project:** detect lockfile or `packageManager` in `package.json` — never mix managers.
+
+## Installing new packages — use latest stable
+
+When adding a **new** approved dependency:
+
+* Install the **latest stable** version — do not pin old or arbitrary versions without reason.
+* Use the **project’s package manager** (see above). Example for pnpm:
+
+```bash
+pnpm add <package>@latest              # production
+pnpm add -D <package>@latest           # devDependency
+```
+
+* After install, confirm `package.json` reflects a current release (check [npm](https://www.npmjs.com/) or `pnpm view <package> version` if unsure).
+* Keep **peer-related packages aligned** — e.g. `eslint-config-next` major should match `next`; Radix/shadcn packages should match versions already in the repo.
+* Verify compatibility with **Next.js 16**, **React 19**, and **TypeScript strict** before committing.
+* For **shadcn/ui** components, use the CLI (`pnpm dlx shadcn@latest add …`) so versions match the project’s Radix/Tailwind setup — do not hand-pick older Radix packages.
+
+## Do not
+
+* Add outdated packages when a current stable release exists.
+* Bump unrelated existing dependencies unless required for the new package or explicitly requested.
+* Install packages globally — project-local only.
+* Mix package managers or create a second lockfile (e.g. do not run `npm install` in a pnpm repo).
+* Switch package manager on an initialized project without explicit user approval.
+
+---
+
+# Naming Rules
+
+Use **kebab-case** for **files and folders you create in this repo**. Exported symbols follow TypeScript conventions (PascalCase components, camelCase functions/hooks).
+
+**Does not apply to external or library code** — do not rename, reformat, or enforce kebab-case on:
+
+* shadcn/ui or Radix components installed via CLI (e.g. `Button` from `@/components/ui/button`)
+* npm packages (`node_modules`, `@radix-ui/*`, `@tabler/icons-react`, etc.)
+* Next.js conventions (`layout.tsx`, `page.tsx`, `loading.tsx`, `error.tsx`)
+* Third-party generators or upstream file names — keep them as provided
+
+## Project files you create (kebab-case)
+
+Feature components, actions, hooks, schemas, utilities, and custom shared UI:
+
+```text
+user-card.tsx
+product-table.tsx
+dashboard-nav.tsx
+use-users.ts
+get-users.ts
+create-user.ts
+user.schema.ts
+form-input.tsx
+data-table-pagination.tsx
+```
+
+## Exported symbols (not file names)
+
+* React components: PascalCase — `UserCard`, `DashboardNav`
+* Hooks: camelCase with `use` prefix — `useUsers`, `useAuth`
+* Server actions / utilities: camelCase — `getUsers`, `createUser`
+
+## Do not use (for project files you create)
+
+* PascalCase file names — `UserCard.tsx`
+* camelCase file names — `getUsers.ts`, `useAuth.ts`
+* snake_case file or folder names — `user_card.tsx`
+
+When adding a new **project-owned** file, match the kebab-case pattern already used in the same directory. When importing **library** components, use the library’s export names unchanged (`Button`, `Select`, `Dialog`, etc.).
+
+---
+
+# AI Agent Rules
+
+AI agents must:
+
+* Follow existing architecture.
+* Verify **required stack tooling** exists (ESLint, Prettier, Husky, lint-staged, README) — install if missing.
+* **Ask before adding** anything listed under **Not in stack — ask before adding** (competing state, fetch, UI, format, or backend tools).
+* **Ask which backend target applies** (external API vs Next.js `app/api/` vs hybrid) before designing new data flows or Route Handlers.
+* Use the **project’s package manager** if initialized; if greenfield, **ask the user** which to use (see **Package manager** under Dependency Rules).
+* When installing **new approved** dependencies, use **`@latest` stable** and verify compatibility with Next 16 / React 19 (see **Dependency Rules**).
+* Use kebab-case only for **project files they create** (not library/shadcn/external components).
+* Follow existing naming conventions for exported symbols in project code.
+* Keep changes minimal.
+* Prefer consistency over optimization.
+* Reuse existing utilities.
+* Avoid introducing alternative patterns.
+* **After completing a feature or command**, ask the user if they want test cases added; if yes and none exist, add tests for that scope (see **Testing Rules**).
+
+AI agents must never:
+
+* Move API calls to client components.
+* Use useEffect for data fetching.
+* Store tokens in localStorage.
+* Add unnecessary `use client`.
+* Add dependencies without approval.
+* Introduce competing architectures.
+* Rename or reformat external/library components to match kebab-case.
+* Create PascalCase or camelCase names for **new project-owned** files or folders.
+* Add tests without the user agreeing, or skip asking whether tests are wanted after finishing implementation.
+* Run a different package manager than the one the repo uses (e.g. npm in a pnpm project).
+
+When uncertain:
+
+* Follow current project patterns.
+* **Ask** before major architectural changes — especially backend target (external vs Next.js API), package manager (greenfield only), and new dependencies.
+* Prioritize maintainability and consistency.
