@@ -152,7 +152,7 @@ Use this if someone sent you the folder or you downloaded the **ZIP** from GitHu
 - Server Actions vs Route Handlers (external API vs Next BFF)
 - Zod, React Hook Form, Tailwind CSS 4
 - ESLint, Prettier, Husky
-- kebab-case naming, package manager policy
+- File and data-type naming (detect existing convention; ask on greenfield), package manager policy
 - AI agent guardrails
 
 ---

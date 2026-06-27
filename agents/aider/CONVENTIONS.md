@@ -96,7 +96,7 @@ Document the chosen mode in the feature or PR when introducing new API surface a
 
 * Prefer consistency over cleverness.
 * Prefer existing patterns over introducing new ones.
-* Use **kebab-case** for **project files you create** (features, routes, custom components).
+* Match existing **file and data-type naming** in project-owned code; on greenfield or inconsistent repos, **ask** the user which convention to use (see **Naming Rules**).
 * Prefer Server Components over Client Components.
 * Prefer Server Actions over API routes when possible.
 * Prefer built-in Next.js features over third-party packages.
@@ -479,7 +479,7 @@ form-checkbox.tsx
 form-date-picker.tsx
 ```
 
-Export PascalCase component names from kebab-case files (e.g. `FormInput` from `form-input.tsx`).
+Export PascalCase component names from project-owned files (e.g. `FormInput` from `form-input.tsx` when the repo uses kebab-case files).
 
 Do not rename or reformat **library-installed** form primitives (e.g. shadcn `Form` from `@/components/ui/form`) — use their exports as documented.
 
@@ -916,7 +916,7 @@ Example prompt to user:
 ## Test file conventions
 
 * Place tests next to source or in a mirrored path — match existing project pattern once a runner exists.
-* Use **kebab-case** for new test files you create (e.g. `get-users.test.ts`, `user.schema.test.ts`).
+* Match the project’s **file naming convention** for new test files (e.g. `get-users.test.ts`, `user.schema.test.ts` when using kebab-case).
 * Prefer unit tests for actions, schemas, and utils; integration/E2E only when the user requests or the feature requires it.
 
 ## Do not
@@ -995,18 +995,43 @@ pnpm add -D <package>@latest           # devDependency
 
 # Naming Rules
 
-Use **kebab-case** for **files and folders you create in this repo**. Exported symbols follow TypeScript conventions (PascalCase components, camelCase functions/hooks).
+## Detect and follow the project convention
 
-**Does not apply to external or library code** — do not rename, reformat, or enforce kebab-case on:
+Before creating **project-owned** files, folders, or types, determine what naming convention this repo already uses.
+
+1. **Scan** `src/features/`, custom `src/components/` (exclude shadcn `ui/`), `src/lib/`, actions, hooks, schemas, and tests.
+2. **Identify** the dominant pattern for **files and folders** — kebab-case, camelCase, PascalCase, snake_case, or other.
+3. **Identify** the dominant pattern for **data types** — TypeScript `type` / `interface` / `enum` names, Zod schema identifiers, and related exported type symbols.
+
+### Existing / established projects
+
+If the codebase already follows a clear convention:
+
+* Use the **same file and folder casing** for all new project-owned paths.
+* Use the **same data-type naming style** for new types, interfaces, enums, and schema exports.
+* Match the pattern in the **same directory or feature** when in doubt.
+* Do **not** introduce a different casing style (e.g. do not add `getUsers.ts` in a folder of `get-users.ts` files, or `userFilters` types where the repo uses `UserFilters`).
+
+### Greenfield or inconsistent naming
+
+If the project is new, mostly empty, or project-owned files use **mixed/inconsistent** casing with no clear dominant pattern:
+
+* **Ask the user** before creating project-owned files or types:
+  * **Files and folders:** kebab-case, camelCase, PascalCase, snake_case, or other?
+  * **Data types:** PascalCase (TypeScript default), camelCase, or other?
+* Record the choice once (e.g. README or team convention) and apply it consistently afterward.
+* Do **not** guess or silently pick a convention without asking.
+
+**Does not apply to external or library code** — do not rename, reformat, or enforce project conventions on:
 
 * shadcn/ui or Radix components installed via CLI (e.g. `Button` from `@/components/ui/button`)
 * npm packages (`node_modules`, `@radix-ui/*`, `@tabler/icons-react`, etc.)
 * Next.js conventions (`layout.tsx`, `page.tsx`, `loading.tsx`, `error.tsx`)
 * Third-party generators or upstream file names — keep them as provided
 
-## Project files you create (kebab-case)
+## Examples (when kebab-case is chosen for files)
 
-Feature components, actions, hooks, schemas, utilities, and custom shared UI:
+If the user chooses **kebab-case** for project-owned files (recommended default in this guide), typical paths look like:
 
 ```text
 user-card.tsx
@@ -1020,19 +1045,19 @@ form-input.tsx
 data-table-pagination.tsx
 ```
 
-## Exported symbols (not file names)
+## Exported symbols (typical TypeScript — follow repo if different)
 
 * React components: PascalCase — `UserCard`, `DashboardNav`
 * Hooks: camelCase with `use` prefix — `useUsers`, `useAuth`
+* Types / interfaces / enums: PascalCase — `User`, `CampaignFilters`
 * Server actions / utilities: camelCase — `getUsers`, `createUser`
 
-## Do not use (for project files you create)
+## Do not mix conventions
 
-* PascalCase file names — `UserCard.tsx`
-* camelCase file names — `getUsers.ts`, `useAuth.ts`
-* snake_case file or folder names — `user_card.tsx`
+* Do not use a different file or folder casing than the rest of the project (or the user’s chosen convention).
+* Do not use a different data-type casing than the rest of the project (or the user’s chosen convention).
 
-When adding a new **project-owned** file, match the kebab-case pattern already used in the same directory. When importing **library** components, use the library’s export names unchanged (`Button`, `Select`, `Dialog`, etc.).
+When adding a new **project-owned** file, match the pattern already used in the same directory. When importing **library** components, use the library’s export names unchanged (`Button`, `Select`, `Dialog`, etc.).
 
 ---
 
@@ -1046,8 +1071,9 @@ AI agents must:
 * **Ask which backend target applies** (external API vs Next.js `app/api/` vs hybrid) before designing new data flows or Route Handlers.
 * Use the **project’s package manager** if initialized; if greenfield, **ask the user** which to use (see **Package manager** under Dependency Rules).
 * When installing **new approved** dependencies, use **`@latest` stable** and verify compatibility with Next 16 / React 19 (see **Dependency Rules**).
-* Use kebab-case only for **project files they create** (not library/shadcn/external components).
-* Follow existing naming conventions for exported symbols in project code.
+* **Inspect existing file and data-type naming** before creating project-owned paths or types; follow the repo’s convention when one exists.
+* On greenfield or inconsistent repos, **ask the user** for file/folder and data-type casing (kebab-case, camelCase, PascalCase, etc.) before adding files.
+* Do not apply project naming rules to library/shadcn/external components.
 * Keep changes minimal.
 * Prefer consistency over optimization.
 * Reuse existing utilities.
@@ -1062,13 +1088,13 @@ AI agents must never:
 * Add unnecessary `use client`.
 * Add dependencies without approval.
 * Introduce competing architectures.
-* Rename or reformat external/library components to match kebab-case.
-* Create PascalCase or camelCase names for **new project-owned** files or folders.
+* Rename or reformat external/library components to match project file naming.
+* Introduce a **new** file, folder, or data-type casing style that conflicts with the established project convention (or the user’s chosen convention).
 * Add tests without the user agreeing, or skip asking whether tests are wanted after finishing implementation.
 * Run a different package manager than the one the repo uses (e.g. npm in a pnpm project).
 
 When uncertain:
 
 * Follow current project patterns.
-* **Ask** before major architectural changes — especially backend target (external vs Next.js API), package manager (greenfield only), and new dependencies.
+* **Ask** before major architectural changes — especially backend target (external vs Next.js API), package manager (greenfield only), file/data-type naming (greenfield or inconsistent repos), and new dependencies.
 * Prioritize maintainability and consistency.
