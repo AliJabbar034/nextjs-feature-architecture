@@ -153,6 +153,7 @@ Use this if someone sent you the folder or you downloaded the **ZIP** from GitHu
 - Zod, React Hook Form, Tailwind CSS 4
 - ESLint, Prettier, Husky
 - File and data-type naming (detect existing convention; ask on greenfield), package manager policy
+- Global API response/error envelopes (`apiSuccess` / `apiError` on every Route Handler until explicit opt-out)
 - AI agent guardrails
 
 ---

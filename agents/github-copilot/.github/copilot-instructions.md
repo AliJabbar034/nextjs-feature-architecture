@@ -278,31 +278,27 @@ src/app/api/
     └── route.ts          # GET, POST, …
 ```
 
-Example (thin handler — logic stays in the feature):
+Example (thin handler — uses shared response helpers):
 
 ```ts
-import { NextResponse } from "next/server";
-
 import { createUser } from "@/features/users/actions/create-user";
 import { createUserSchema } from "@/features/users/schemas/user.schema";
+import { apiError, apiSuccess } from "@/lib/api-response";
 
 export async function POST(request: Request) {
   const body = createUserSchema.safeParse(await request.json());
 
   if (!body.success) {
-    return NextResponse.json(
-      { success: false, message: "Invalid request", errors: body.error.flatten() },
-      { status: 400 },
-    );
+    return apiError("Invalid request", 400, [body.error.flatten()]);
   }
 
   const result = await createUser(body.data);
 
   if (!result.success) {
-    return NextResponse.json(result, { status: 422 });
+    return apiError(result.message, 422, result.errors ?? []);
   }
 
-  return NextResponse.json(result);
+  return apiSuccess(result.data, 201);
 }
 ```
 
@@ -311,9 +307,9 @@ export async function POST(request: Request) {
 * Keep handlers **thin** — validate, auth-check, then delegate to **feature actions** or **feature services**
 * Never duplicate business logic in `route.ts`; share the same action/service Server Actions use
 * Always validate request body, query, and headers with **Zod**
+* Use **`apiSuccess` / `apiError`** from `lib/api-response.ts` on every standard endpoint (see **API Response Format**)
 * Use the **centralized API client** (`lib/api-client.ts`, etc.) inside actions/services — not raw `fetch` to the backend scattered in routes
 * Never expose secrets, refresh tokens, or internal API keys in responses
-* Return the standard API shape: `{ success, data }` / `{ success, message, errors }`
 * Apply auth the same way as Server Actions (session, HttpOnly cookies)
 
 ---
@@ -751,6 +747,10 @@ Disable logs in production.
 
 # API Response Format
 
+**Every Route Handler and HTTP-facing Server Action** must return the same success and error envelope — unless **explicitly opted out** (webhooks, OAuth, streaming, third-party-compatible payloads).
+
+## Standard envelopes
+
 Success:
 
 ```json
@@ -769,6 +769,64 @@ Error:
   "errors": []
 }
 ```
+
+* **`message`** — human-readable summary
+* **`errors`** — optional field-level or detail array (validation, error codes)
+
+## Required implementation — shared response helpers
+
+Next.js has no global HTTP interceptor — use **centralized helpers** in `lib/` (same role as a Nest `TransformInterceptor` + exception filter):
+
+```text
+lib/
+├── api-response.ts       # apiSuccess(), apiError() → NextResponse.json(...)
+└── api-client.ts
+```
+
+Example helpers:
+
+```ts
+// lib/api-response.ts
+import { NextResponse } from "next/server";
+
+export function apiSuccess<T>(data: T, status = 200) {
+  return NextResponse.json({ success: true, data }, { status });
+}
+
+export function apiError(
+  message: string,
+  status = 400,
+  errors: unknown[] = [],
+) {
+  return NextResponse.json({ success: false, message, errors }, { status });
+}
+```
+
+Register the pattern once; **every** `app/api/**/route.ts` uses these helpers — do not hand-build JSON shapes per file.
+
+### If not set up yet
+
+Before adding Route Handlers, check whether **`lib/api-response.ts`** (or equivalent) exists.
+
+If **missing**, **ask the user** whether to scaffold shared success/error helpers first.
+
+## Route Handler behavior (default — all endpoints)
+
+* Return **`apiSuccess(data)`** for successful responses — do not inline `{ success: true, data }` in each route unless helpers are absent (legacy).
+* Return **`apiError(message, status, errors)`** for failures — map Zod `safeParse` failures to the same envelope with `errors`.
+* Delegate business logic to feature actions/services; routes only validate, auth-check, and format via helpers.
+* Server Actions that return data to the client should use the same `{ success, data }` / `{ success, message, errors }` shape when they expose HTTP-like results.
+
+## Opt-out (explicit only)
+
+* Webhooks, OAuth callbacks, file downloads, SSE streams, or third-party-required raw bodies may return non-standard shapes.
+* Comment or document why the route opts out.
+* Do **not** opt out for normal CRUD/list/detail API routes.
+
+## Do not
+
+* Use `{ error: '...' }`, bare `{ message: '...' }`, or different keys on one route vs another.
+* Duplicate success/error JSON construction in every `route.ts` when shared helpers exist or should exist.
 
 ---
 
@@ -1094,6 +1152,7 @@ AI agents must:
 * Prefer consistency over optimization.
 * Reuse existing utilities.
 * Avoid introducing alternative patterns.
+* Use **`apiSuccess` / `apiError`** (or repo equivalent) on **every** standard Route Handler — same envelope until explicit opt-out (see **API Response Format**).
 * **After completing a feature or command**, follow **Testing Rules**: **update existing unit tests** when a spec already exists for that scope; **ask the user** only when no unit tests exist yet.
 
 AI agents must never:
@@ -1104,6 +1163,7 @@ AI agents must never:
 * Add unnecessary `use client`.
 * Add dependencies without approval.
 * Introduce competing architectures.
+* Return ad-hoc JSON error/success shapes from Route Handlers when shared **`apiSuccess` / `apiError`** helpers exist or should exist — use one envelope for all endpoints until explicit opt-out.
 * Rename or reformat external/library components to match project file naming.
 * Introduce a **new** file, folder, or data-type casing style that conflicts with the established project convention (or the user’s chosen convention).
 * Skip asking when **no unit tests exist** for the completed scope (unless the user already requested tests upfront).
