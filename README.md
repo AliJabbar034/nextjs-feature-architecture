@@ -17,7 +17,9 @@ cd path/to/your-nextjs-app
 
 ### Step 2 — Run this command
 
-**Install rules for all AI agents** (Cursor, Claude, Copilot, Windsurf, Gemini, etc.):
+Pick **one** option below. Same command every time — only the flag at the end changes.
+
+**All AI agents** (Cursor, Claude, Copilot, Windsurf, Gemini, etc.):
 
 ```bash
 curl -fsSL \
@@ -25,7 +27,31 @@ curl -fsSL \
   | bash -s -- --all
 ```
 
-> Copy the full block above. It downloads the guide, copies files into your app, then cleans up — **no git clone**.
+**Cursor only** → adds `.cursor/rules/nextjs-feature-architecture.mdc`:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \
+  | bash -s -- --cursor
+```
+
+**Claude Code only** → adds `CLAUDE.md` + `AGENTS.md`:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \
+  | bash -s -- --claude
+```
+
+**Cursor + Claude** (common combo):
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \
+  | bash -s -- --cursor --claude
+```
+
+> Copy the **full block** for your choice. It downloads the guide, copies files into your app, then cleans up — **no git clone**.
 
 ### Step 3 — Commit in your app
 
@@ -38,18 +64,29 @@ git commit -m "Add Next.js feature architecture AI rules"
 
 ---
 
-## Only need specific AI tools?
+## Other AI tools
 
-Run from your **app root**. Replace the flags with what you use:
+Same pattern — change the flag at the end:
 
-| I use… | Command |
+| I use… | Flag |
 | --- | --- |
-| **Cursor only** | `curl -fsSL https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \| bash -s -- --cursor` |
-| **Claude Code only** | `curl -fsSL https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \| bash -s -- --claude` |
-| **Cursor + Claude** | `curl -fsSL https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \| bash -s -- --cursor --claude` |
-| **GitHub Copilot** | `curl -fsSL https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \| bash -s -- --copilot` |
+| GitHub Copilot | `--copilot` |
+| Windsurf | `--windsurf` |
+| Gemini | `--gemini` |
+| Codex / generic agents | `--codex` |
+| Continue.dev | `--continue` |
+| Aider | `--aider` |
+| JetBrains Junie | `--junie` |
 
-**All flags:** `--cursor` `--claude` `--copilot` `--windsurf` `--gemini` `--codex` `--continue` `--aider` `--junie`
+Example for **Copilot only**:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/AliJabbar034/nextjs-feature-architecture/main/scripts/install.sh \
+  | bash -s -- --copilot
+```
+
+Combine flags if you use multiple tools, e.g. `--cursor --claude --copilot`.
 
 ---
 
