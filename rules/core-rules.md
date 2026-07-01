@@ -426,6 +426,49 @@ Required:
 * Form validation
 * Environment validation
 
+## Base input-type validation
+
+Apply **type-appropriate validation** wherever data is collected — shared form components (`components/forms/`), feature schemas (`features/*/schemas/`), and Server Actions / Route Handlers.
+
+| Input type | Apply validation for (examples) |
+| --- | --- |
+| **Text** | `min` / `max` length, trim, pattern when format matters |
+| **Email** | RFC-style email format |
+| **Phone** | Country-aware or E.164 format, allowed characters, min/max digits |
+| **Number** | `min` / `max`, integer vs decimal, positive-only when required |
+| **URL** | Valid URL scheme and structure |
+| **Date / datetime** | Valid date, min/max range, timezone handling when relevant |
+| **File** | MIME type allowlist, max size, max count, extension checks |
+| **Select / checkbox / radio** | Value in allowed options |
+
+* Encode rules in **Zod** (single source of truth for submit/server validation).
+* Mirror the same rules in **React Hook Form** resolvers and shared form field components so errors surface before submit.
+* Do not rely on HTML `type` alone — always validate on the server as well.
+
+## Toggleable validation
+
+Shared form components must let consumers **enable or disable** validation rules per field via props — do not hard-code one-size-fits-all behavior.
+
+* Expose clear toggles (e.g. `required`, `validatePhone`, `validateFileType`, or a grouped `validation` object) so a screen can relax or tighten rules without forking the component.
+* **Defaults:** turn on validation that matches the input type (secure by default — e.g. phone fields validate phone format unless explicitly disabled).
+* When a toggle is off, skip client-side checks for that rule; **server-side Zod schemas must still validate** unless the product explicitly documents an exception.
+* Document non-default toggles in the feature schema or form usage when behavior differs from defaults.
+
+Example prop shape (adapt naming to repo convention):
+
+```tsx
+<FormInput
+  name="phone"
+  type="tel"
+  validation={{ phone: true, required: true }}
+/>
+
+<FormFileUpload
+  name="avatar"
+  validation={{ fileType: true, maxSize: true, required: false }}
+/>
+```
+
 ---
 
 # Environment Rules
@@ -471,11 +514,25 @@ form-select.tsx
 form-textarea.tsx
 form-checkbox.tsx
 form-date-picker.tsx
+form-file-upload.tsx
 ```
 
 Export PascalCase component names from project-owned files (e.g. `FormInput` from `form-input.tsx` when the repo uses kebab-case files).
 
 Do not rename or reformat **library-installed** form primitives (e.g. shadcn `Form` from `@/components/ui/form`) — use their exports as documented.
+
+## Input types and validation
+
+Every shared form field must declare its **base input type** (`text`, `email`, `tel` / phone, `number`, `url`, `file`, `date`, etc.) and apply the matching validation from **Base input-type validation** (see **Validation Rules**).
+
+Requirements:
+
+* **Phone** — format validation (and optional country rules) on by default; consumer can toggle off via props when a looser field is required.
+* **Text** — length and pattern rules when the field has a known format (slug, username, etc.).
+* **File** — MIME type, size, and count limits on by default; toggles for optional uploads or relaxed type checks.
+* **All types** — `required` and other rules must be overridable per usage; defaults should match the type.
+
+Keep Zod schemas in `features/*/schemas/` aligned with the same rules and toggles used in the form — client toggles do not replace server validation.
 
 ---
 
@@ -1150,6 +1207,7 @@ AI agents must:
 * Avoid introducing alternative patterns.
 * Use **`apiSuccess` / `apiError`** (or repo equivalent) on **every** standard Route Handler — same envelope until explicit opt-out (see **API Response Format**).
 * **After completing a feature or command**, follow **Testing Rules**: **update existing unit tests** when a spec already exists for that scope; **ask the user** only when no unit tests exist yet.
+* Apply **base input-type validation** (phone, text, file, etc.) in forms and Zod schemas; expose **toggleable** validation props on shared form components (see **Validation Rules** and **Form Rules**).
 
 AI agents must never:
 
